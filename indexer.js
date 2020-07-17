@@ -279,7 +279,7 @@ class GitUpdater {
   }
   async _entryToDoc(type, id, entry) {
     entry.isBlob();
-    let contents = (await entry.getBlob()).content().toString('utf8');
+    let contents = Buffer.from((await entry.getBlob()).content()).toString('utf8');
     let doc;
     try {
       doc = JSON.parse(contents);

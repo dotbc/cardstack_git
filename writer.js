@@ -172,7 +172,7 @@ class Writer {
     return withErrorHandling(id, type, async () => {
       let change = await change_1.create(this.repo, version, this.branchPrefix + defaultBranch, !!this.remote);
       let file = await change.get(this._filenameFor(type, id, isSchema));
-      let before = JSON.parse((await file.getBuffer()).toString());
+      let before = JSON.parse(Buffer.from(await file.getBuffer()).toString("utf8"));
       file.delete();
       before.id = id;
       before.type = type;
