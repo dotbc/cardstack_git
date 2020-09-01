@@ -28,6 +28,7 @@ const isInternalCard = (type = '', id = '') => {
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const stringify = require('json-stable-stringify-without-jsonify')
 const logger_1 = require('@cardstack/logger')
+const { relativeTimeThreshold } = require('moment-timezone')
 const log = logger_1('cardstack/git')
 const mkdir = util_1.promisify(temp_1.mkdir)
 const defaultBranch = 'master'
@@ -60,6 +61,7 @@ class Writer {
     this.myEmail = `${os_1.userInfo().username}@${hostname}`
     this.idGenerator = idGenerator
     this.remote = remote
+    this.softWrite = false
     if (githereum) {
       let config = Object.assign({}, githereum)
       config.log = log.info.bind(log)
@@ -72,8 +74,11 @@ class Writer {
   get hasCardSupport () {
     return true
   }
-  async prepareCreate (session, type, document, isSchema) {
+  async prepareCreate (session, type, document, isSchema, softWrite) {
     let id = getId(document)
+    if (typeof softWrite !== 'undefined') {
+      this.softWrite = softWrite
+    }
     return withErrorHandling(id, type, async () => {
       await this._ensureRepo()
       let type = getType(document)
@@ -136,8 +141,11 @@ class Writer {
       }
     })
   }
-  async prepareUpdate (session, type, id, document, isSchema) {
+  async prepareUpdate (session, type, id, document, isSchema, softWrite) {
     let meta = getMeta(document)
+    if (typeof softWrite !== 'undefined') {
+      this.softWrite = softWrite
+    }
     if (!meta || !meta.version) {
       throw new Error('missing required field "meta.version"')
     }
@@ -386,7 +394,11 @@ async function finalizer (pendingChange) {
       }
     }
     let version = await change.finalize(signature, this.remote)
-    await this._pushToGithereum()
+    if (this.softWrite) {
+      this._pushToGithereum().catch(e => console.log(e))
+    } else {
+      await this._pushToGithereum()
+    }
     return {
       version,
       hash: file ? file.savedId() : null
