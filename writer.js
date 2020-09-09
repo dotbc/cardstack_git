@@ -74,6 +74,11 @@ class Writer {
   get hasCardSupport () {
     return true
   }
+  async bulkPush () {
+    await this.repo.fetchAll()
+    const targetBranch = this.branchPrefix + defaultBranch
+    await this.repo.mergeBranches(targetBranch, `origin/${targetBranch}`)
+  }
   async prepareCreate (session, type, document, isSchema, softWrite) {
     let id = getId(document)
     if (typeof softWrite !== 'undefined') {
