@@ -75,6 +75,7 @@ class Writer {
     return true
   }
   async bulkPush () {
+    await this._ensureRepo()
     await this.repo.fetchAll()
     const targetBranch = this.branchPrefix + defaultBranch
     await this.repo.mergeBranches(targetBranch, `origin/${targetBranch}`)
