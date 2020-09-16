@@ -99,7 +99,11 @@ class Repository {
         gitdir: this.gitdir,
         ours: to,
         theirs: from,
-        fastForwardOnly: true
+        fastForwardOnly: false,
+        author: {
+          name: 'Anonymous Coward',
+          email: 'anonymouscoward@foo.com'
+        }
       })
     } finally {
       release()
