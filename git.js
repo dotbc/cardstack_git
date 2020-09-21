@@ -55,13 +55,18 @@ class Repository {
     return await Repository.open(gitdir)
   }
   static async clone (url, dir) {
-    await isomorphic_git_1.clone({
-      fs: fs_1,
-      onAuth,
-      http,
-      url,
-      dir
-    })
+    const release = await mutex.acquire()
+    try {
+      await isomorphic_git_1.clone({
+        fs: fs_1,
+        onAuth,
+        http,
+        url,
+        dir
+      })
+    } finally {
+      release()
+    }
     return await Repository.open(dir)
   }
   async getMasterCommit () {
@@ -76,20 +81,31 @@ class Repository {
     return new Remote(this, remote)
   }
   async createBlobFromBuffer (buffer) {
-    let sha = await isomorphic_git_1.writeBlob({
-      fs: fs_1,
-      gitdir: this.gitdir,
-      blob: buffer
-    })
+    const release = await mutex.acquire()
+    let sha
+    try {
+      sha = await isomorphic_git_1.writeBlob({
+        fs: fs_1,
+        gitdir: this.gitdir,
+        blob: buffer
+      })
+    } finally {
+      release()
+    }
     return new Oid(sha)
   }
   async fetchAll () {
-    await isomorphic_git_1.fetch({
-      onAuth,
-      http,
-      fs: fs_1,
-      gitdir: this.gitdir
-    })
+    const release = await mutex.acquire()
+    try {
+      await isomorphic_git_1.fetch({
+        onAuth,
+        http,
+        fs: fs_1,
+        gitdir: this.gitdir
+      })
+    } finally {
+      release()
+    }
   }
   async mergeBranches (to, from) {
     const release = await mutex.acquire()
@@ -113,22 +129,32 @@ class Repository {
     return await Reference.lookup(this, branchName)
   }
   async createBranch (targetBranch, headCommit) {
-    await isomorphic_git_1.writeRef({
-      fs: fs_1,
-      gitdir: this.gitdir,
-      ref: `refs/heads/${targetBranch}`,
-      value: headCommit.sha(),
-      force: true
-    })
+    const release = await mutex.acquire()
+    try {
+      await isomorphic_git_1.writeRef({
+        fs: fs_1,
+        gitdir: this.gitdir,
+        ref: `refs/heads/${targetBranch}`,
+        value: headCommit.sha(),
+        force: true
+      })
+    } finally {
+      release()
+    }
     return await Reference.lookup(this, targetBranch)
   }
   async checkoutBranch (reference) {
-    await isomorphic_git_1.checkout({
-      fs: fs_1,
-      dir: this.path,
-      gitdir: this.gitdir,
-      ref: reference.toString()
-    })
+    const release = await mutex.acquire()
+    try {
+      await isomorphic_git_1.checkout({
+        fs: fs_1,
+        dir: this.path,
+        gitdir: this.gitdir,
+        ref: reference.toString()
+      })
+    } finally {
+      release()
+    }
   }
   async getHeadCommit () {
     return await Commit.lookup(this, 'HEAD')
@@ -168,12 +194,17 @@ class Repository {
       gitdir: this.gitdir,
       fullname: true
     })
-    await isomorphic_git_1.writeRef({
-      fs: fs_1,
-      gitdir: this.gitdir,
-      ref: ref,
-      value: commit.sha()
-    })
+    const release = await mutex.acquire()
+    try {
+      await isomorphic_git_1.writeRef({
+        fs: fs_1,
+        gitdir: this.gitdir,
+        ref: ref,
+        value: commit.sha()
+      })
+    } finally {
+      release()
+    }
     if (hard) {
       await unlink(path_1.join(this.gitdir, 'index'))
       await isomorphic_git_1.checkout({
@@ -194,15 +225,21 @@ class Commit {
     this.commitInfo = commitInfo
   }
   static async create (repo, commitOpts, tree, parents) {
-    let sha = await isomorphic_git_1.commit(
-      Object.assign(formatCommitOpts(commitOpts), {
-        fs: fs_1,
-        gitdir: repo.gitdir,
-        tree: tree.id().toString(),
-        parent: parents.map(p => p.sha()),
-        noUpdateBranch: true
-      })
-    )
+    const release = await mutex.acquire()
+    let sha
+    try {
+      sha = await isomorphic_git_1.commit(
+        Object.assign(formatCommitOpts(commitOpts), {
+          fs: fs_1,
+          gitdir: repo.gitdir,
+          tree: tree.id().toString(),
+          parent: parents.map(p => p.sha()),
+          noUpdateBranch: true
+        })
+      )
+    } finally {
+      release()
+    }
     return new Oid(sha)
   }
   static async lookup (repo, id) {
@@ -277,13 +314,18 @@ class Reference {
     return new Oid(this.sha)
   }
   async setTarget (id) {
-    await isomorphic_git_1.writeRef({
-      fs: fs_1,
-      gitdir: this.repo.gitdir,
-      ref: this.reference,
-      value: id.toString(),
-      force: true
-    })
+    const release = await mutex.acquire()
+    try {
+      await isomorphic_git_1.writeRef({
+        fs: fs_1,
+        gitdir: this.repo.gitdir,
+        ref: this.reference,
+        value: id.toString(),
+        force: true
+      })
+    } finally {
+      release()
+    }
   }
   toString () {
     return this.reference
@@ -351,11 +393,17 @@ function formatCommitOpts (commitOpts) {
 let Merge = /** @class */ (() => {
   class Merge {
     static async base (repo, one, two) {
-      let oids = await isomorphic_git_1.findMergeBase({
-        fs: fs_1,
-        gitdir: repo.gitdir,
-        oids: [one.toString(), two.toString()]
-      })
+      const release = await mutex.acquire()
+      let oids
+      try {
+        oids = await isomorphic_git_1.findMergeBase({
+          fs: fs_1,
+          gitdir: repo.gitdir,
+          oids: [one.toString(), two.toString()]
+        })
+      } finally {
+        release()
+      }
       return new Oid(oids[0])
     }
     static async perform (repo, ourCommit, theirCommit, commitOpts) {
