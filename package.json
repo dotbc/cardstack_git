@@ -15,7 +15,7 @@
     "debounce-promise": "^3.1.2",
     "delay": "^4.1.0",
     "filenamify-url": "^1.0.0",
-    "githereum": "0.0.1",
+    "githereum": "https://github.com/dotbc/cardstack_githereum.git",
     "async-mutex": "0.2.4",
     "lodash": "^4.17.11",
     "json-stable-stringify-without-jsonify": "^1.0.1",
