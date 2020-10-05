@@ -11,8 +11,6 @@ const process_1 = require('process')
 const util_1 = require('util')
 const temp_1 = require('temp')
 temp_1.track()
-const Mutex = require('async-mutex').Mutex
-const mutex = new Mutex()
 const lodash_1 = require('lodash')
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const Githereum = require('githereum/githereum')
@@ -20,6 +18,7 @@ const Githereum = require('githereum/githereum')
 const GithereumContract = require('githereum/build/contracts/Githereum.json')
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const TruffleContract = require('truffle-contract')
+const debounce = require('debounce-promise');
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const isInternalCard = (type = '', id = '') => {
   const cardIdDelim = '::'
@@ -28,24 +27,23 @@ const isInternalCard = (type = '', id = '') => {
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const stringify = require('json-stable-stringify-without-jsonify')
 const logger_1 = require('@cardstack/logger')
-const { relativeTimeThreshold } = require('moment-timezone')
 const log = logger_1('cardstack/git')
 const mkdir = util_1.promisify(temp_1.mkdir)
 const defaultBranch = 'master'
 
-function getType (model) {
+function getType(model) {
   return model.data ? model.data.type : model.type
 }
 
-function getId (model) {
+function getId(model) {
   return model.data ? model.data.id : model.id
 }
 
-function getMeta (model) {
+function getMeta(model) {
   return model.data ? model.data.meta : model.meta
 }
 class Writer {
-  constructor ({
+  constructor({
     repo,
     idGenerator,
     basePath,
@@ -68,19 +66,19 @@ class Writer {
       this.githereumConfig = config
     }
   }
-  static create (params) {
+  static create(params) {
     return new this(params)
   }
-  get hasCardSupport () {
+  get hasCardSupport() {
     return true
   }
-  async bulkPush () {
+  async bulkPush() {
     await this._ensureRepo()
     await this.repo.fetchAll()
     const targetBranch = this.branchPrefix + defaultBranch
     await this.repo.mergeBranches(targetBranch, `origin/${targetBranch}`)
   }
-  async prepareCreate (session, type, document, isSchema, softWrite) {
+  async prepareCreate(session, type, document, isSchema, softWrite) {
     let id = getId(document)
     if (typeof softWrite !== 'undefined') {
       this.softWrite = softWrite
@@ -116,15 +114,15 @@ class Writer {
       let gitDocument =
         document.data && isInternalCard(type, id)
           ? {
-              data: {
-                id,
-                type
-              }
-            }
-          : {
+            data: {
               id,
               type
             }
+          }
+          : {
+            id,
+            type
+          }
       if (document.data && isInternalCard(type, id)) {
         gitDocument = lodash_1.merge(gitDocument, lodash_1.cloneDeep(document))
       } else {
@@ -147,7 +145,7 @@ class Writer {
       }
     })
   }
-  async prepareUpdate (session, type, id, document, isSchema, softWrite) {
+  async prepareUpdate(session, type, id, document, isSchema, softWrite) {
     let meta = getMeta(document)
     if (typeof softWrite !== 'undefined') {
       this.softWrite = softWrite
@@ -195,7 +193,7 @@ class Writer {
       }
     })
   }
-  async prepareDelete (session, version, type, id, isSchema) {
+  async prepareDelete(session, version, type, id, isSchema) {
     if (!version) {
       throw new Error('version is required')
     }
@@ -225,7 +223,7 @@ class Writer {
       }
     })
   }
-  async _commitOptions (operation, type, id, session) {
+  async _commitOptions(operation, type, id, session) {
     let user = session && (await session.loadUser())
     let userAttributes = (user && user.data && user.data.attributes) || {}
     return {
@@ -239,7 +237,7 @@ class Writer {
       message: `${operation} ${type} ${String(id).slice(12)}`
     }
   }
-  _filenameFor (type, id, isSchema) {
+  _filenameFor(type, id, isSchema) {
     let base = this.basePath ? this.basePath + '/' : ''
     if (!isSchema && isInternalCard(type, id)) {
       return `${base}cards/${id}.json`
@@ -247,7 +245,7 @@ class Writer {
     let category = isSchema ? 'schema' : 'contents'
     return `${base}${category}/${type}/${id}.json`
   }
-  async _ensureRepo () {
+  async _ensureRepo() {
     if (!this.repo) {
       if (this.remote) {
         // @ts-ignore promisify not typed well apparently?
@@ -258,7 +256,7 @@ class Writer {
       this.repo = await git_1.Repository.open(this.repoPath)
     }
   }
-  async _ensureGithereum () {
+  async _ensureGithereum() {
     await this._ensureRepo()
     if (!this.githereum && this.githereumConfig) {
       let contract = await this._getGithereumContract()
@@ -273,7 +271,7 @@ class Writer {
       )
     }
   }
-  async _getGithereumContract () {
+  async _getGithereumContract() {
     let providerUrl =
       this.githereumConfig.providerUrl || 'http://localhost:9545'
     let GithereumTruffleContract = TruffleContract(GithereumContract)
@@ -282,7 +280,7 @@ class Writer {
       this.githereumConfig.contractAddress
     )
   }
-  _generateId () {
+  _generateId() {
     if (this.idGenerator) {
       return this.idGenerator()
     } else {
@@ -294,22 +292,24 @@ class Writer {
       return crypto_1.randomBytes(20).toString('hex')
     }
   }
-  async _pushToGithereum () {
+  async _pushToGithereum() {
     await this._ensureGithereum()
     if (this.githereum) {
       log.info('Githereum is enabled, triggering push')
       log.info('Starting githereum push')
-      const release = await mutex.acquire()
-      try {
-        return this.githereum
-          .push(this.githereumConfig.tag)
-          .then(() => log.info('Githereum push complete'))
-          .catch(e => {
-            log.error('Error pushing to githereum:', e, e.stack)
-          })
-      } finally {
-        release()
+      if (!this._githereumPushDebounced) {
+        this._githereumPushDebounced = debounce(() => {
+          log.info("Starting githereum push");
+          return this.githereum.push(this.githereumConfig.tag).then(() =>
+            log.info("Githereum push complete")
+          ).catch(e => {
+            log.error("Error pushing to githereum:", e, e.stack);
+          });
+
+        }, this.githereumConfig.debounce || 0);
       }
+
+      this._githereumPushDebounced();
     } else {
       log.info('Githereum is disabled')
     }
@@ -319,7 +319,7 @@ exports.default = Writer
 // TODO: we only need to do this here because the Hub has no generic
 // "read" hook to call on writers. We should use that instead and move
 // this into the generic hub:writers code.
-function patch (before, diffDocument) {
+function patch(before, diffDocument) {
   let after
   let afterResource
   let beforeResource
@@ -355,7 +355,7 @@ function patch (before, diffDocument) {
   }
   return after
 }
-async function withErrorHandling (id, type, fn) {
+async function withErrorHandling(id, type, fn) {
   try {
     return await fn()
   } catch (err) {
@@ -374,7 +374,7 @@ async function withErrorHandling (id, type, fn) {
     throw err
   }
 }
-async function finalizer (pendingChange) {
+async function finalizer(pendingChange) {
   let { id, type, change, file, signature } = pendingChange
   return withErrorHandling(id, type, async () => {
     if (file) {
