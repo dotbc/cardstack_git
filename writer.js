@@ -10,6 +10,7 @@ const os_1 = require('os')
 const process_1 = require('process')
 const util_1 = require('util')
 const temp_1 = require('temp')
+const { dir } = require('tmp-promise')
 temp_1.track()
 const lodash_1 = require('lodash')
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
@@ -71,12 +72,6 @@ class Writer {
   }
   get hasCardSupport() {
     return true
-  }
-  async bulkPush() {
-    await this._ensureRepo()
-    await this.repo.fetchAll()
-    const targetBranch = this.branchPrefix + defaultBranch
-    await this.repo.mergeBranches(targetBranch, `origin/${targetBranch}`)
   }
   async prepareCreate(session, type, document, isSchema, softWrite) {
     let id = getId(document)
@@ -162,6 +157,7 @@ class Writer {
         !!this.remote
       )
       let file = await change.get(this._filenameFor(type, id, isSchema), {
+        allowCreate: true,
         allowUpdate: true
       })
       const data = Buffer.from(await file.getBuffer()).toString('utf8')
@@ -249,7 +245,7 @@ class Writer {
     if (!this.repo) {
       if (this.remote) {
         // @ts-ignore promisify not typed well apparently?
-        let tempRepoPath = await mkdir('cardstack-temp-repo')
+        let tempRepoPath = (await dir()).path
         this.repo = await git_1.Repository.clone(this.remote.url, tempRepoPath)
         return
       }
@@ -400,11 +396,7 @@ async function finalizer(pendingChange) {
       }
     }
     let version = await change.finalize(signature, this.remote)
-    if (this.softWrite) {
-      this._pushToGithereum().catch(e => console.log(e))
-    } else {
-      await this._pushToGithereum()
-    }
+    await this._pushToGithereum()
     return {
       version,
       hash: file ? file.savedId() : null

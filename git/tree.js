@@ -9,7 +9,7 @@ const isomorphic_git_1 = require('isomorphic-git')
 const path_1 = require('path')
 const mutex = require('../git_mutex')
 class Tree {
-  constructor (repo, containingEntry, readResult) {
+  constructor(repo, containingEntry, readResult) {
     this.repo = repo
     this.containingEntry = containingEntry
     this.dirty = false
@@ -21,18 +21,24 @@ class Tree {
       this._entries = []
     }
   }
-  static async lookup (repo, oid, containingEntry) {
-    let readResult = await isomorphic_git_1.readTree({
-      fs,
-      gitdir: repo.gitdir,
-      oid: oid.sha
-    })
+  static async lookup(repo, oid, containingEntry) {
+    const release = await mutex.acquire()
+    let readResult
+    try {
+      readResult = await isomorphic_git_1.readTree({
+        fs,
+        gitdir: repo.gitdir,
+        oid: oid.sha
+      })
+    } finally {
+      release()
+    }
     return new Tree(repo, containingEntry, readResult)
   }
-  static create (repo, containingEntry) {
+  static create(repo, containingEntry) {
     return new Tree(repo, containingEntry)
   }
-  static FILEMODE () {
+  static FILEMODE() {
     return {
       TREE: '040000',
       BLOB: '100644',
@@ -41,36 +47,36 @@ class Tree {
       COMMIT: '160000'
     }
   }
-  id () {
+  id() {
     return this.oid
   }
-  entries () {
+  entries() {
     return this._entries
   }
-  entryByName (name) {
+  entryByName(name) {
     return this._entries.find(e => e.name() === name)
   }
-  insert (name, contents, filemode) {
+  insert(name, contents, filemode) {
     this.removeEntryByName(name)
     let entry = TreeEntry.create(this.repo, this, name, contents, filemode)
     this._entries.push(entry)
     this.makeDirty()
     return entry
   }
-  removeEntryByName (name) {
+  removeEntryByName(name) {
     this._entries = this._entries.filter(e => e.name() !== name)
     this.makeDirty()
   }
-  makeDirty () {
+  makeDirty() {
     this.dirty = true
     if (this.containingEntry) {
       this.containingEntry.makeDirty()
     }
   }
-  async delete (name) {
+  async delete(name) {
     this.removeEntryByName(name)
   }
-  async fileAtPath (path, allowCreate) {
+  async fileAtPath(path, allowCreate) {
     let tombstone
     let { tree, leaf, leafName } = await this.traverse(path, allowCreate)
     if (!leaf || leaf === tombstone || !leaf.isBlob()) {
@@ -85,7 +91,7 @@ class Tree {
       leafName
     }
   }
-  async traverse (path, allowCreate = false) {
+  async traverse(path, allowCreate = false) {
     let parts = path.split('/')
     let here = this
     while (parts.length > 1) {
@@ -109,14 +115,14 @@ class Tree {
       leafName: parts[0]
     }
   }
-  path () {
+  path() {
     if (this.containingEntry) {
       return this.containingEntry.path()
     } else {
       return ''
     }
   }
-  async write (allowEmpty = false) {
+  async write(allowEmpty = false) {
     if (!this.dirty) {
       return this.id()
     }
@@ -146,7 +152,7 @@ class Tree {
 exports.default = Tree
 exports.Tree = Tree
 class TreeEntry {
-  constructor (repo, tree, entry, _name, contents, _filemode) {
+  constructor(repo, tree, entry, _name, contents, _filemode) {
     this.repo = repo
     this.tree = tree
     this.entry = entry
@@ -160,36 +166,36 @@ class TreeEntry {
       this.dirty = true
     }
   }
-  static create (repo, tree, name, contents, filemode) {
+  static create(repo, tree, name, contents, filemode) {
     return new TreeEntry(repo, tree, undefined, name, contents, filemode)
   }
-  static build (repo, tree, entry) {
+  static build(repo, tree, entry) {
     return new TreeEntry(repo, tree, entry)
   }
-  name () {
+  name() {
     return this._name || this.entry.path
   }
-  path () {
+  path() {
     return path_1.join(this.tree.path(), this.name())
   }
-  id () {
+  id() {
     return this.oid || null
   }
-  isTree () {
+  isTree() {
     return (
       this.contents instanceof Tree || (this.entry && this.entry.type == 'tree')
     )
   }
-  isBlob () {
+  isBlob() {
     return (
       this.contents instanceof Buffer ||
       (this.entry && this.entry.type == 'blob')
     )
   }
-  filemode () {
+  filemode() {
     return this._filemode || this.entry.mode
   }
-  async write () {
+  async write() {
     if (this.isTree()) {
       let tree = await this.getTree()
       this.oid = await tree.write()
@@ -214,7 +220,7 @@ class TreeEntry {
     this.oid = new git_1.Oid(sha)
     this.dirty = false
   }
-  async getTree () {
+  async getTree() {
     if (this.isTree() && this.contents) {
       return this.contents
     }
@@ -222,11 +228,11 @@ class TreeEntry {
     this.contents = tree
     return tree
   }
-  makeDirty () {
+  makeDirty() {
     this.dirty = true
     this.tree.makeDirty()
   }
-  toTreeObject () {
+  toTreeObject() {
     return {
       mode: this.filemode(),
       path: this.name(),
@@ -234,34 +240,41 @@ class TreeEntry {
       oid: this.oid.sha
     }
   }
-  removeFromParent () {
+  removeFromParent() {
     this.tree.delete(this.name())
   }
-  async getBlob () {
+  async getBlob() {
     if (this.contents) {
       let content = this.contents
       return {
         id: null,
-        content () {
+        content() {
           return content
         }
       }
     }
-    let { blob } = await isomorphic_git_1.readBlob({
-      fs,
-      gitdir: this.repo.gitdir,
-      oid: this.entry.oid
-    })
+    let blob
+    const release = await mutex.acquire()
+    try {
+      let obj = await isomorphic_git_1.readBlob({
+        fs,
+        gitdir: this.repo.gitdir,
+        oid: this.entry.oid
+      })
+      blob = obj.blob
+    } finally {
+      release()
+    }
     return {
       id: this.id(),
-      content () {
+      content() {
         return blob
       }
     }
   }
 }
 exports.TreeEntry = TreeEntry
-class FileNotFound extends Error {}
+class FileNotFound extends Error { }
 exports.FileNotFound = FileNotFound
-class OverwriteRejected extends Error {}
+class OverwriteRejected extends Error { }
 exports.OverwriteRejected = OverwriteRejected

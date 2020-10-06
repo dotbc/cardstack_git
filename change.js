@@ -9,7 +9,7 @@ const delay_1 = require('delay')
 const logger_1 = require('@cardstack/logger')
 const log = logger_1('cardstack/git')
 class Change {
-  constructor (
+  constructor(
     repo,
     targetBranch,
     parentTree,
@@ -26,11 +26,11 @@ class Change {
     this.root = parentTree || Tree.create(repo, parentTree)
     this.isRemote = !!isRemote
   }
-  static async createInitial (repoPath, targetBranch) {
+  static async createInitial(repoPath, targetBranch) {
     let repo = await git_1.Repository.initBare(repoPath)
     return new this(repo, targetBranch, undefined, [])
   }
-  static async createBranch (repo, parentId, targetBranch) {
+  static async createBranch(repo, parentId, targetBranch) {
     let parentCommit
     if (parentId) {
       parentCommit = await git_1.Commit.lookup(repo, parentId)
@@ -43,7 +43,7 @@ class Change {
     }
     return new this(repo, targetBranch, parentTree, parents, parentCommit)
   }
-  static async create (repo, parentId, targetBranch, isRemote) {
+  static async create(repo, parentId, targetBranch, isRemote) {
     let parentCommit
     if (parentId) {
       parentCommit = await git_1.Commit.lookup(repo, parentId)
@@ -65,17 +65,17 @@ class Change {
       isRemote
     )
   }
-  async _headCommit () {
+  async _headCommit() {
     return headCommit(this.repo, this.targetBranch, this.isRemote)
   }
-  async get (path, { allowCreate, allowUpdate } = {}) {
+  async get(path, { allowCreate, allowUpdate } = {}) {
     let { tree, leaf, leafName } = await this.root.fileAtPath(
       path,
       !!allowCreate
     )
     return new FileHandle(tree, leaf, leafName, !!allowUpdate, path)
   }
-  async finalize (commitOpts) {
+  async finalize(commitOpts) {
     let newCommit = await this._makeCommit(commitOpts)
     let delayTime = 500
     let mergeCommit
@@ -103,9 +103,7 @@ class Change {
       }
       if (
         this.isRemote &&
-        !this.repo.isBare() &&
-        (typeof commitOpts.isBulk === 'undefined' ||
-          commitOpts.isBulk === false)
+        !this.repo.isBare()
       ) {
         await this.repo.fetchAll()
         await this.repo.mergeBranches(
@@ -117,7 +115,7 @@ class Change {
     }
     throw new Error('Failed to finalise commit and could not recover. ')
   }
-  async _makeCommit (commitOpts) {
+  async _makeCommit(commitOpts) {
     if (!this.root.dirty) {
       return this.parentCommit
     }
@@ -131,7 +129,7 @@ class Change {
     )
     return git_1.Commit.lookup(this.repo, commitOid)
   }
-  async _pushCommit (mergeCommit) {
+  async _pushCommit(mergeCommit) {
     const remoteBranchName = `temp-remote-${crypto_1
       .randomBytes(20)
       .toString('hex')}`
@@ -151,7 +149,7 @@ class Change {
       throw err
     }
   }
-  async _makeMergeCommit (newCommit, commitOpts) {
+  async _makeMergeCommit(newCommit, commitOpts) {
     let headCommit = await this._headCommit()
     if (!headCommit) {
       // new branch, so no merge needed
@@ -175,7 +173,7 @@ class Change {
     )
     return await git_1.Commit.lookup(this.repo, mergeResult.oid)
   }
-  async _applyCommit (commit) {
+  async _applyCommit(commit) {
     let headCommit = await this._headCommit()
     if (!headCommit) {
       return await this._newBranch(commit)
@@ -183,13 +181,13 @@ class Change {
     let headRef = await this.repo.lookupLocalBranch(this.targetBranch)
     await headRef.setTarget(commit.id())
   }
-  async _newBranch (newCommit) {
+  async _newBranch(newCommit) {
     await this.repo.createBranch(this.targetBranch, newCommit)
   }
 }
 exports.default = Change
 class FileHandle {
-  constructor (tree, leaf, name, allowUpdate, path) {
+  constructor(tree, leaf, name, allowUpdate, path) {
     this.tree = tree
     this.leaf = leaf
     this.name = name
@@ -206,15 +204,15 @@ class FileHandle {
       this.mode = Tree.FILEMODE().BLOB
     }
   }
-  async getBuffer () {
+  async getBuffer() {
     if (this.leaf) {
       return (await this.leaf.getBlob()).content()
     }
   }
-  exists () {
+  exists() {
     return !!this.leaf
   }
-  setContent (buffer) {
+  setContent(buffer) {
     if (typeof buffer === 'string') {
       buffer = Buffer.from(buffer, 'utf8')
     }
@@ -228,20 +226,20 @@ class FileHandle {
     }
     this.leaf = this.tree.insert(this.name, buffer, this.mode)
   }
-  delete () {
+  delete() {
     if (!this.leaf) {
       throw new Error(`No such file ${this.path}`)
     }
     this.tree.delete(this.name)
     this.leaf = undefined
   }
-  savedId () {
+  savedId() {
     // this is available only after our change has been finalized
     return this.leaf && this.leaf.id()
   }
 }
 module.exports = Change
-async function headCommit (repo, targetBranch, isRemote) {
+async function headCommit(repo, targetBranch, isRemote) {
   let headRef
   try {
     if (isRemote) {

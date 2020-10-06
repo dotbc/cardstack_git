@@ -17,6 +17,7 @@
     "@cardstack/plugin-utils": "0.14.38-patch.0",
     "debounce-promise": "^3.1.2",
     "delay": "^4.1.0",
+    "tmp-promise": "3.0.2",
     "filenamify-url": "^1.0.0",
     "githereum": "https://github.com/dotbc/cardstack_githereum.git",
     "async-mutex": "0.2.4",
